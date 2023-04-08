@@ -1,11 +1,13 @@
 use std::net::TcpListener;
+use sqlx::{PgConnection, Connection};
+use zero2prod::configuration::get_configuration;
 
-// soin up instance of app and return address 'http://localhost:XXXX'
+// spin up instance of app and return address 'http://localhost:XXXX'
 fn spawn_app() -> String {
     let listen = TcpListener::bind("127.0.0.1:0")
         .expect("couldn't bind to random port");
     let port = listen.local_addr().unwrap().port();
-    let server = zero2prod::run(listen).expect("Failed to bind address");
+    let server = zero2prod::startup::run(listen).expect("Failed to bind address");
     let _ = tokio::spawn(server);
 
     format!("http://127.0.0.1:{}", port)
@@ -29,12 +31,19 @@ async fn health_check_works() {
 async fn subscribe_returns_200_for_valid_form() {
     // Arrange
     let app_address = spawn_app();
+    let configuration = get_configuration().expect("Failed to get configuration");
+    let connection_string = configuration.database.connection_string();
+    let connection = PgConnection::connect(&connection_string)
+        .await
+        .expect("Failed to connect to Postgres");
     let client = reqwest::Client::new();
 
     // Act
     let body = "name=le%20guin&email=ursula_le_guin%40gmail.com";
     let response = client
-        .post(&format!("{}/subscriptions", &app_address)) .header("Content-Type", "application/x-www-form-urlencoded") .body(body)
+        .post(&format!("{}/subscriptions", &app_address))
+        .header("Content-Type", "application/x-www-form-urlencoded")
+        .body(body)
         .send()
         .await
         .expect("Failed to execute request.");
